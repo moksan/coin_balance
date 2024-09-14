@@ -9,8 +9,8 @@ import asyncio
 from telegram.ext import ApplicationBuilder
 
 # Binance API anahtarlarınızı buraya girin
-api_key = 
-secret_key = 
+api_key = 'btsxFPi17RUleIPxWgag6Km0RsIiNnOxDkg3D84GwLVdG9EbisSTzGU1gaXv8xzB'
+secret_key = 'VTUuDpKDPNKb6dOft7dpqzodtLXUGTiSObUYvDISiY6tmLmrdHgDAxIf824qbr1l'
 
 # Global değişken olarak binance değişkenini tanımlayın
 binance = None  # Başlangıçta None olarak tanımlanır
@@ -24,8 +24,8 @@ sell_lock = threading.Lock()
 
 
 # Telegram Bot API token ve chat ID'nizi girin
-telegram_api_token = 
-chat_id = 
+telegram_api_token = '7476798156:AAETrZkG5rsuKGcxTWrVIXPfC6bx3G1orDE'
+chat_id = '1130567592'
 app = ApplicationBuilder().token(telegram_api_token).build()
 
 # Telegram Bot nesnesini oluşturun
@@ -174,7 +174,7 @@ def get_volume_threshold(daily_volume):
     """
     Hacim eşiklerini kontrol eder ve belirlenen hacim seviyelerine göre bir eşik döndürür.
     """
-    volume_thresholds = [(5000000, 500)]
+    volume_thresholds = [(5000000, 1000)]
     for threshold, minute_volume in volume_thresholds:
         if daily_volume < threshold:
             return minute_volume
@@ -223,7 +223,8 @@ def is_green_candle(symbol, threshold):
 
 def monitor_price_change_percentage(tickers):
     # Hacme göre sıralama ve değişim bilgisini gösterme
-    sorted_tickers = sorted(tickers, key=lambda x: float(x['quoteVolume']), reverse=True)
+    sorted_tickers = sorted(tickers, key=lambda x: print(x) or float(x['quoteVolume']), reverse=True)
+
     for ticker in sorted_tickers:
         symbol = ticker['symbol']
         price_change_percent = ticker['priceChangePercent']
