@@ -5,10 +5,12 @@ import pytz
 import json
 from datetime import datetime, timezone
 from telegram import Bot
+import asyncio
+from telegram.ext import ApplicationBuilder
 
 # Binance API anahtarlarınızı buraya girin
-api_key = 'your_api_key_here'
-secret_key = 'your_secret_key_here'
+api_key = 
+secret_key = 
 
 # Global değişken olarak binance değişkenini tanımlayın
 binance = None  # Başlangıçta None olarak tanımlanır
@@ -22,18 +24,19 @@ sell_lock = threading.Lock()
 
 
 # Telegram Bot API token ve chat ID'nizi girin
-telegram_api_token = 'your_telegram_bot_token_here'
-chat_id = 'your_telegram_chat_id_here'
+telegram_api_token = 
+chat_id = 
+app = ApplicationBuilder().token(telegram_api_token).build()
 
 # Telegram Bot nesnesini oluşturun
 bot = Bot(token=telegram_api_token)
 
-def send_telegram_message(message):
+async  def send_telegram_message(message):
     """
     Telegram üzerinden belirli bir kullanıcıya mesaj gönderir.
     """
     try:
-        bot.send_message(chat_id=chat_id, text=message)
+        await app.bot.send_message(chat_id=chat_id, text=message)
     except Exception as e:
         print_with_timestamp(f"Error sending message to Telegram: {e}")
 
@@ -185,7 +188,6 @@ def get_filtered_coins(active_usdt_pairs):
     for market in active_usdt_pairs:
         try:
             ticker = binance.fetch_ticker(market)
-            monitor_price_change_percentage(ticker)
             volume = ticker['quoteVolume']
             threshold = get_volume_threshold(volume)
             if threshold:
@@ -227,7 +229,7 @@ def buy_coin(symbol, amount):
         buy_time = datetime.now().isoformat()
         message = f"Bought {amount} of {symbol} at {buy_price} on {buy_time}"
         print_with_timestamp(message)
-        send_telegram_message(message)  # Telegram mesaj gönderme
+        asyncio.run(send_telegram_message(message))
         usdt_balance = binance.fetch_balance()['USDT']['free']
         print_with_timestamp(f"Updated USDT balance after buying {symbol}: {usdt_balance}")
         return usdt_balance
@@ -266,7 +268,7 @@ def execute_sell(coin, amount):
         print_with_timestamp(f"Sold {amount} of {coin}")
         sell_time = datetime.now().isoformat()
         message = f"Sold {amount} of {coin} at {sell_price} on {sell_time}"
-        send_telegram_message(message)  # Telegram mesaj gönderme
+        asyncio.run(send_telegram_message(message))
         sell_usdt_balance = binance.fetch_balance()['USDT']['free']
         print_with_timestamp(f"Updated USDT balance after selling {coin}: {sell_usdt_balance}")
         return sell_usdt_balance
@@ -311,14 +313,6 @@ def manage_sell(coin, amount, stop_loss_price, take_profit_price):
         print_with_timestamp(f"An unknown error occurred: {e}")
     
     return None
-def monitor_price_change_percentage(tickers):
-    # Hacme göre sıralama ve değişim bilgisini gösterme
-    sorted_tickers = sorted(tickers, key=lambda x: float(x['quoteVolume']), reverse=True)
-    for ticker in sorted_tickers:
-        symbol = ticker['symbol']
-        price_change_percent = ticker['priceChangePercent']
-        volume = ticker['quoteVolume']
-        print(f"Coin: {symbol} | Günlük Değişim: {price_change_percent}% | Günlük Hacim: {volume}")
 
 def monitor_buy_conditions():
     """
