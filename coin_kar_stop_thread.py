@@ -40,6 +40,20 @@ async  def send_telegram_message(message):
     except Exception as e:
         print_with_timestamp(f"Error sending message to Telegram: {e}")
 
+def send_telegram_message_sync(message):
+    """
+    send_telegram_message fonksiyonunu senkron olarak çalıştırır.
+    """
+    try:
+        # Her iş parçacığı için yeni bir olay döngüsü oluşturulması gerekiyor
+        new_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(new_loop)
+        new_loop.run_until_complete(send_telegram_message(message))
+        new_loop.close()  # Olay döngüsünü kapat
+    except Exception as e:
+        print_with_timestamp(f"Error sending message to Telegram: {e}")
+
+
 def connect_to_binance():
     """
     Binance API'sine bağlantı kurar ve gerekli kimlik doğrulama bilgilerini kullanarak bağlantıyı yapılandırır.
@@ -180,25 +194,6 @@ def get_volume_threshold(daily_volume):
             return minute_volume
     return None
 
-def get_filtered_coins(active_usdt_pairs):
-    """
-    Aktif USDT paritelerinin listesini alır ve belirli hacim eşiklerini karşılayanları filtreler.
-    """
-    filtered_coins = []
-    for market in active_usdt_pairs:
-        try:
-            ticker = binance.fetch_ticker(market)
-            monitor_price_change_percentage(ticker)
-
-            volume = ticker['quoteVolume']
-            threshold = get_volume_threshold(volume)
-            if threshold:
-                filtered_coins.append((market, threshold))
-        except ccxt.RequestTimeout:
-            print_with_timestamp(f"Request timeout for {market}")
-        except ccxt.BaseError as e:
-            print_with_timestamp(f"An error occurred for {market}: {e}")
-    return filtered_coins
 
 def is_green_candle(symbol, threshold):
     """
@@ -221,15 +216,6 @@ def is_green_candle(symbol, threshold):
         print_with_timestamp(f"An error occurred while fetching candle data for {symbol}: {e}")
     return False, None
 
-def monitor_price_change_percentage(tickers):
-    # Hacme göre sıralama ve değişim bilgisini gösterme
-    sorted_tickers = sorted(tickers, key=lambda x: print(x) or float(x['quoteVolume']), reverse=True)
-
-    for ticker in sorted_tickers:
-        symbol = ticker['symbol']
-        price_change_percent = ticker['priceChangePercent']
-        volume = ticker['quoteVolume']
-        print(f"Coin: {symbol} | Günlük Değişim: {price_change_percent}% | Günlük Hacim: {volume}")
 
 def buy_coin(symbol, amount):
     """
@@ -241,7 +227,8 @@ def buy_coin(symbol, amount):
         buy_time = datetime.now().isoformat()
         message = f"Bought {amount} of {symbol} at {buy_price} on {buy_time}"
         print_with_timestamp(message)
-        asyncio.run(send_telegram_message(message))
+        #asyncio.run(send_telegram_message(message))
+        send_telegram_message_sync(message)
         usdt_balance = binance.fetch_balance()['USDT']['free']
         print_with_timestamp(f"Updated USDT balance after buying {symbol}: {usdt_balance}")
         return usdt_balance
@@ -280,7 +267,8 @@ def execute_sell(coin, amount):
         print_with_timestamp(f"Sold {amount} of {coin}")
         sell_time = datetime.now().isoformat()
         message = f"Sold {amount} of {coin} at {sell_price} on {sell_time}"
-        asyncio.run(send_telegram_message(message))
+        #asyncio.run(send_telegram_message(message))
+        send_telegram_message_sync(message)
         sell_usdt_balance = binance.fetch_balance()['USDT']['free']
         print_with_timestamp(f"Updated USDT balance after selling {coin}: {sell_usdt_balance}")
         return sell_usdt_balance
@@ -326,14 +314,111 @@ def manage_sell(coin, amount, stop_loss_price, take_profit_price):
     
     return None
 
-def monitor_buy_conditions():
+def get_coin_info(symbol):
+    """
+    Belirli bir coin için piyasa bilgisini ve günlük değişim yüzdesini getirir.
+    """
+    try:
+        ticker = binance.fetch_ticker(symbol)
+        price_change_percent = float(ticker['info']['priceChangePercent'])
+        last_price = float(ticker['last'])
+        volume = float(ticker['quoteVolume'])
+        
+        print_with_timestamp(f"Coin: {symbol} | Son Fiyat: {last_price:.2f} | Günlük Değişim: {price_change_percent:.2f}% | Günlük Hacim: {volume}")
+        
+        return {
+            'symbol': symbol,
+            'last_price': last_price,
+            'price_change_percent': price_change_percent,
+            'volume': volume
+        }
+    except ccxt.BaseError as e:
+        print_with_timestamp(f"An error occurred while fetching coin info for {symbol}: {e}")
+        return None
+
+# def filter_coins_by_percentage(tickers, threshold_percentage=5.0):
+#     """
+#     Belirli bir değişim yüzdesi eşiğine göre coinleri filtreler.
+#     """
+#     significant_coins = []  # Eşik değeri aşan coinleri saklayacak liste
+    
+#     for ticker in tickers:
+#         symbol = ticker['symbol']
+#         price_change_percent = float(ticker['info']['priceChangePercent'])
+        
+#         # Eğer günlük değişim yüzdesi eşik değerden büyük ve pozitifse listeye ekle
+#         if price_change_percent >= threshold_percentage:
+#             print_with_timestamp(f"Significant change detected for {symbol}: {price_change_percent:.2f}%")
+#             significant_coins.append(symbol)
+#         #else:
+#             #print_with_timestamp(f"No significant change for {symbol}. Current Change: {price_change_percent:.2f}%")
+
+#     return significant_coins  # Eşik değeri aşan coinlerin listesini döndür
+
+def filter_coins_by_percentage_and_volume(tickers, threshold_percentage=5.0, min_volume=1000, max_volume=5000000):
+    """
+    Belirli bir değişim yüzdesi ve hacim aralığına göre coinleri filtreler.
+    """
+    significant_coins = []  # Eşik değeri aşan ve hacim aralığında olan coinleri saklayacak liste
+    
+    for ticker in tickers:
+        symbol = ticker['symbol']
+        price_change_percent = float(ticker['info']['priceChangePercent'])
+        volume = float(ticker['quoteVolume'])
+
+        # Eğer günlük değişim yüzdesi eşik değerden büyük ve hacim belirli aralıkta ise listeye ekle
+        if price_change_percent >= threshold_percentage and min_volume <= volume <= max_volume:
+            print_with_timestamp(f"Significant change detected for {symbol}: {price_change_percent:.2f}% with volume: {volume}")
+            significant_coins.append(symbol)
+        #else:
+            #print_with_timestamp(f"No significant change for {symbol}. Current Change: {price_change_percent:.2f}%, Volume: {volume}")
+
+    return significant_coins  # Eşik değeri aşan ve belirli hacimdeki coinlerin listesini döndür
+
+def monitor_price_change_percentage(tickers, threshold_percentage=5.0):
+    """
+    Coinlerin günlük değişim bilgilerini ve hacimlerini kontrol eder ve belirtilen eşiği geçenleri listeler.
+    """
+    filtered_coins = filter_coins_by_percentage_and_volume(tickers, threshold_percentage)
+    return filtered_coins
+
+def get_filtered_coins(active_usdt_pairs, threshold_percentage=5.0):
+    """
+    Aktif USDT paritelerinin listesini alır ve belirli hacim ve değişim yüzdesi eşiklerini karşılayanları filtreler.
+    """
+    filtered_coins = []
+    tickers = []  # Eklenen: ticker bilgilerini saklayacak bir liste
+
+    for market in active_usdt_pairs:
+        try:
+            ticker = binance.fetch_ticker(market)
+            tickers.append(ticker)
+        except ccxt.RequestTimeout:
+            print_with_timestamp(f"Request timeout for {market}")
+        except ccxt.BaseError as e:
+            print_with_timestamp(f"An error occurred for {market}: {e}")
+
+    # Değişim yüzdesine göre filtrelenen coinleri al
+    significant_coins = monitor_price_change_percentage(tickers, threshold_percentage)
+
+    # Sadece belirli hacim eşiklerini karşılayan ve değişim yüzdesi uygun olan coinleri ekle
+    for coin in significant_coins:
+        ticker = binance.fetch_ticker(coin)
+        volume = ticker['quoteVolume']
+        threshold = get_volume_threshold(volume)
+        if threshold:
+            filtered_coins.append((coin, threshold))
+    
+    return filtered_coins
+
+def monitor_buy_conditions(threshold_percentage=5.0):
     """
     Alım işlemlerini sürekli kontrol eder ve uygun koşullar sağlandığında alım yapar.
     """
     global bought_coins, unsold_coins
     active_usdt_pairs = get_active_usdt_pairs()
     while True:
-        filtered_coins = get_filtered_coins(active_usdt_pairs)
+        filtered_coins = get_filtered_coins(active_usdt_pairs, threshold_percentage)
         for coin, threshold in filtered_coins:
             if coin not in bought_coins and coin not in sold_coins:  # Satılan ve alınan coinler tekrar alınmaz
                 is_green, open_price = is_green_candle(coin, threshold)
