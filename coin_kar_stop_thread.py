@@ -188,6 +188,8 @@ def get_filtered_coins(active_usdt_pairs):
     for market in active_usdt_pairs:
         try:
             ticker = binance.fetch_ticker(market)
+            monitor_price_change_percentage(ticker)
+
             volume = ticker['quoteVolume']
             threshold = get_volume_threshold(volume)
             if threshold:
@@ -218,6 +220,15 @@ def is_green_candle(symbol, threshold):
     except ccxt.BaseError as e:
         print_with_timestamp(f"An error occurred while fetching candle data for {symbol}: {e}")
     return False, None
+
+def monitor_price_change_percentage(tickers):
+    # Hacme göre sıralama ve değişim bilgisini gösterme
+    sorted_tickers = sorted(tickers, key=lambda x: float(x['quoteVolume']), reverse=True)
+    for ticker in sorted_tickers:
+        symbol = ticker['symbol']
+        price_change_percent = ticker['priceChangePercent']
+        volume = ticker['quoteVolume']
+        print(f"Coin: {symbol} | Günlük Değişim: {price_change_percent}% | Günlük Hacim: {volume}")
 
 def buy_coin(symbol, amount):
     """
