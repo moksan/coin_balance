@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from telegram import Bot
 import asyncio
 from telegram.ext import ApplicationBuilder
+import requests
 
 # Binance API anahtarlarınızı buraya girin
 api_key = 'btsxFPi17RUleIPxWgag6Km0RsIiNnOxDkg3D84GwLVdG9EbisSTzGU1gaXv8xzB'
@@ -31,28 +32,47 @@ app = ApplicationBuilder().token(telegram_api_token).build()
 # Telegram Bot nesnesini oluşturun
 bot = Bot(token=telegram_api_token)
 
-async  def send_telegram_message(message):
+# async  def send_telegram_message(message):
+#     """
+#     Telegram üzerinden belirli bir kullanıcıya mesaj gönderir.
+#     """
+#     try:
+#         await app.bot.send_message(chat_id=chat_id, text=message)
+#     except Exception as e:
+#         print_with_timestamp(f"Error sending message to Telegram: {e}")
+
+# def send_telegram_message_sync(message):
+#     """
+#     send_telegram_message fonksiyonunu senkron olarak çalıştırır.
+#     """
+#     try:
+#         # Eğer mevcut bir olay döngüsü yoksa yeni bir tane oluştur
+#         if not asyncio.get_event_loop().is_running():
+#             new_loop = asyncio.new_event_loop()
+#             asyncio.set_event_loop(new_loop)
+#             new_loop.run_until_complete(send_telegram_message(message))
+#             # Olay döngüsünü kapatma
+#         else:
+#             # Eğer mevcut olay döngüsü varsa, mevcut olanı kullan
+#             asyncio.run(send_telegram_message(message))
+#     except Exception as e:
+#         print_with_timestamp(f"Error sending message to Telegram: {e}")
+
+def send_telegram_message_sync(message):
     """
     Telegram üzerinden belirli bir kullanıcıya mesaj gönderir.
     """
     try:
-        await app.bot.send_message(chat_id=chat_id, text=message)
+        url = f'https://api.telegram.org/bot{telegram_api_token}/sendMessage'
+        payload = {
+            'chat_id': chat_id,
+            'text': message
+        }
+        response = requests.post(url, data=payload)
+        if response.status_code != 200:
+            print_with_timestamp(f"Error sending message to Telegram: {response.text}")
     except Exception as e:
         print_with_timestamp(f"Error sending message to Telegram: {e}")
-
-def send_telegram_message_sync(message):
-    """
-    send_telegram_message fonksiyonunu senkron olarak çalıştırır.
-    """
-    try:
-        # Her iş parçacığı için yeni bir olay döngüsü oluşturulması gerekiyor
-        new_loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(new_loop)
-        new_loop.run_until_complete(send_telegram_message(message))
-        new_loop.close()  # Olay döngüsünü kapat
-    except Exception as e:
-        print_with_timestamp(f"Error sending message to Telegram: {e}")
-
 
 def connect_to_binance():
     """
@@ -117,7 +137,7 @@ def calculate_amount(price, min_notional):
     """
     Belirli bir fiyata göre alınacak miktarı hesaplar.
     """
-    usd_amount = 50
+    usd_amount = 15
     amount = usd_amount / price
     if amount * price < min_notional:
         amount = min_notional / price
@@ -128,7 +148,7 @@ def save_bought_coins(bought_coins):
     Satın alınan coinlerin listesini bir dosyaya kaydeder.
     """
     with open('bought_coins.json', 'w') as file:
-        json.dump(bought_coins, file)
+        json.dump(bought_coins, file, indent=4, ensure_ascii=False, sort_keys=True)
 
 def load_bought_coins():
     """
@@ -161,7 +181,7 @@ def save_sold_coins(sold_coins):
     Satılan coinlerin listesini bir dosyaya kaydeder.
     """
     with open('sold_coins.json', 'w') as file:
-        json.dump(sold_coins, file)
+        json.dump(sold_coins, file, indent=4, ensure_ascii=False, sort_keys=True)
 
 def load_sold_coins():
     """
@@ -188,7 +208,7 @@ def get_volume_threshold(daily_volume):
     """
     Hacim eşiklerini kontrol eder ve belirlenen hacim seviyelerine göre bir eşik döndürür.
     """
-    volume_thresholds = [(5000000, 1000)]
+    volume_thresholds = [(10000000, 1000)]
     for threshold, minute_volume in volume_thresholds:
         if daily_volume < threshold:
             return minute_volume
@@ -355,7 +375,7 @@ def get_coin_info(symbol):
 
 #     return significant_coins  # Eşik değeri aşan coinlerin listesini döndür
 
-def filter_coins_by_percentage_and_volume(tickers, threshold_percentage=5.0, min_volume=1000, max_volume=5000000):
+def filter_coins_by_percentage_and_volume(tickers, threshold_percentage=5.0, min_volume=1000, max_volume=10000000):
     """
     Belirli bir değişim yüzdesi ve hacim aralığına göre coinleri filtreler.
     """
