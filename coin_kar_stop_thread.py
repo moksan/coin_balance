@@ -312,7 +312,7 @@ def create_take_profit_order(symbol, amount, take_profit_price):
     try:
         order = binance.create_limit_sell_order(symbol, amount, take_profit_price)
         print_with_timestamp(f"Take-Profit emri oluşturuldu: {order}")
-        return order['orderId']  # 'orderId' kullanılıyor
+        return order['id']  # 'orderId' kullanılıyor
     except ccxt.BaseError as e:
         print_with_timestamp(f"Take-Profit emri oluşturulurken hata oluştu: {e}")
         return None
@@ -326,7 +326,7 @@ def create_stop_loss_order(symbol, amount, stop_loss_price, stop_loss_limit_pric
             'stopPrice': stop_loss_price  # Stop-Loss tetikleyici fiyat
         })
         print_with_timestamp(f"Stop-Loss emri oluşturuldu: {order}")
-        return order['orderId']  # 'orderId' kullanılıyor
+        return order['id']  # 'orderId' kullanılıyor
     except ccxt.BaseError as e:
         print_with_timestamp(f"Stop-Loss emri oluşturulurken hata oluştu: {e}")
         return None
@@ -397,7 +397,7 @@ def monitor_orders(take_profit_order, stop_loss_order, coin, stop_event):
             open_orders = binance.fetch_open_orders(symbol=coin)
 
             # Eğer Take-Profit emri tetiklendiyse Stop-Loss'u iptal et
-            if not any(order['orderId'] == take_profit_order for order in open_orders):  # 'id' yerine 'orderId'
+            if not any(order['id'] == take_profit_order for order in open_orders):  # 'id' yerine 'orderId'
                 print_with_timestamp(f"Take-Profit emri tetiklendi, Stop-Loss emri iptal ediliyor.")
                 if stop_loss_order:
                     binance.cancel_order(stop_loss_order, coin)  # 'id' yerine 'orderId'
@@ -423,7 +423,7 @@ def monitor_orders(take_profit_order, stop_loss_order, coin, stop_event):
                 return sell_usdt_balance
 
             # Eğer Stop-Loss emri tetiklendiyse Take-Profit'i iptal et
-            if not any(order['orderId'] == stop_loss_order for order in open_orders):  # 'id' yerine 'orderId'
+            if not any(order['id'] == stop_loss_order for order in open_orders):  # 'id' yerine 'orderId'
                 print_with_timestamp(f"Stop-Loss emri tetiklendi, Take-Profit emri iptal ediliyor.")
                 if take_profit_order:
                     binance.cancel_order(take_profit_order, coin)  # 'id' yerine 'orderId'
