@@ -25,8 +25,8 @@ sell_lock = threading.Lock()
 
 
 # Telegram Bot API token ve chat ID'nizi girin
-telegram_api_token = '7289217723:AAEAjoHDoTuBysblDsefb9aZ5QDsGPZwpv8'
-chat_id = '7503089535'
+telegram_api_token = #'7289217723:AAEAjoHDoTuBysblDsefb9aZ5QDsGPZwpv8'
+chat_id = #'7503089535'
 app = ApplicationBuilder().token(telegram_api_token).build()
 
 # Telegram Bot nesnesini oluşturun
@@ -208,7 +208,7 @@ def get_volume_threshold(daily_volume):
     """
     Hacim eşiklerini kontrol eder ve belirlenen hacim seviyelerine göre bir eşik döndürür.
     """
-    volume_thresholds = [(10000000, 1000)]
+    volume_thresholds = [(10000000, 125000)]
     for threshold, minute_volume in volume_thresholds:
         if daily_volume < threshold:
             return minute_volume
@@ -307,35 +307,95 @@ def execute_sell(coin, amount,sell_price):
         print_with_timestamp(f"An unknown error occurred: {e}")
     return None
 
+# def manage_sell(coin, amount, stop_loss_price, take_profit_price):
+#     """
+#     Coin'in stop-loss veya kâr alım seviyelerine ulaşıp ulaşmadığını kontrol eder ve gerekiyorsa satış yapar.
+#     """
+#     try:
+#         ticker = binance.fetch_ticker(coin)
+#         current_price = ticker['last'] if ticker['last'] is not None else ticker['close']
+        
+#         # Stop-Loss kontrolü
+#         if current_price <= stop_loss_price:
+#             print_with_timestamp(f"Stop-Loss triggered for {coin}. Current Price: {current_price}, Stop-Loss Price: {stop_loss_price}")
+#             #return execute_sell(coin, amount)
+#             return execute_sell(coin, amount,stop_loss_price)
+#         # Kâr Alım kontrolü
+#         elif current_price >= take_profit_price:
+#             print_with_timestamp(f"Take-Profit triggered for {coin}. Current Price: {current_price}, Take-Profit Price: {take_profit_price}")
+#             #return execute_sell(coin, amount)
+#             return execute_sell(coin, amount,take_profit_price)
+#         else:
+#             print_with_timestamp(f"Holding {coin}. Current Price: {current_price}, Stop-Loss Price: {stop_loss_price}, Take-Profit Price: {take_profit_price}")
+
+#     except ccxt.RequestTimeout:
+#         print_with_timestamp(f"Request timeout while managing sell for {coin}. Retrying...")
+#     except ccxt.BaseError as e:
+#         print_with_timestamp(f"An error occurred while managing sell for {coin}: {e}")
+#     except Exception as e:
+#         print_with_timestamp(f"An unknown error occurred: {e}")
+    
+#     return None
+def create_oco_order(symbol, amount, take_profit_price, stop_loss_price, stop_loss_limit_price):
+    """
+    Binance'de OCO emri oluşturur. 
+    Take-Profit ve Stop-Loss fiyatlarını belirler.
+    """
+    try:
+        params = {
+            'stopPrice': stop_loss_price,  # Stop-Loss tetikleyici fiyat
+            'type': 'OCO',  # OCO emri tipi
+            'stopLimitPrice': stop_loss_limit_price,  # Stop-Loss limit fiyatı
+            'stopLimitTimeInForce': 'GTC',  # Emrin geçerlilik süresi
+        }
+
+        order = binance.private_post_order_oco(
+            symbol=symbol,
+            side='sell',
+            quantity=amount,
+            price=take_profit_price,  # Take-Profit fiyatı
+            stopPrice=stop_loss_price,  # Stop-Loss tetikleyici fiyatı
+            stopLimitPrice=stop_loss_limit_price,  # Stop-Loss limit fiyatı
+            stopLimitTimeInForce='GTC',  # Stop-Loss geçerlilik süresi
+            params=params
+        )
+        print_with_timestamp(f"OCO emri başarıyla oluşturuldu: {order}")
+        return order
+
+    except ccxt.BaseError as e:
+        print_with_timestamp(f"OCO emri oluşturulurken hata oluştu: {e}")
+        return None
+
 def manage_sell(coin, amount, stop_loss_price, take_profit_price):
     """
-    Coin'in stop-loss veya kâr alım seviyelerine ulaşıp ulaşmadığını kontrol eder ve gerekiyorsa satış yapar.
+    Coin'in stop-loss veya take-profit seviyelerine ulaşıp ulaşmadığını kontrol eder
+    ve OCO (One-Cancels-the-Other) yöntemiyle satış yapar.
     """
     try:
         ticker = binance.fetch_ticker(coin)
         current_price = ticker['last'] if ticker['last'] is not None else ticker['close']
         
-        # Stop-Loss kontrolü
-        if current_price <= stop_loss_price:
-            print_with_timestamp(f"Stop-Loss triggered for {coin}. Current Price: {current_price}, Stop-Loss Price: {stop_loss_price}")
-            #return execute_sell(coin, amount)
-            return execute_sell(coin, amount,stop_loss_price)
-        # Kâr Alım kontrolü
-        elif current_price >= take_profit_price:
-            print_with_timestamp(f"Take-Profit triggered for {coin}. Current Price: {current_price}, Take-Profit Price: {take_profit_price}")
-            #return execute_sell(coin, amount)
-            return execute_sell(coin, amount,take_profit_price)
-        else:
-            print_with_timestamp(f"Holding {coin}. Current Price: {current_price}, Stop-Loss Price: {stop_loss_price}, Take-Profit Price: {take_profit_price}")
+        # Stop-Loss ve Take-Profit limit fiyatı belirleme (biraz fiyat altında olabilir)
+        stop_loss_limit_price = stop_loss_price * 0.995  # Stop-Loss tetiklendiğinde limit fiyat (örneğin %0.5 altında)
+
+        # OCO emrini oluştur
+        create_oco_order(
+            symbol=coin,
+            amount=amount,
+            take_profit_price=take_profit_price,  # Kar alım fiyatı
+            stop_loss_price=stop_loss_price,  # Stop-Loss tetikleyici fiyat
+            stop_loss_limit_price=stop_loss_limit_price  # Stop-Loss gerçekleştiğinde satılacak fiyat
+        )
 
     except ccxt.RequestTimeout:
-        print_with_timestamp(f"Request timeout while managing sell for {coin}. Retrying...")
+        print_with_timestamp(f"Request timeout while managing OCO sell for {coin}. Retrying...")
     except ccxt.BaseError as e:
-        print_with_timestamp(f"An error occurred while managing sell for {coin}: {e}")
+        print_with_timestamp(f"An error occurred while managing OCO sell for {coin}: {e}")
     except Exception as e:
         print_with_timestamp(f"An unknown error occurred: {e}")
     
     return None
+
 
 def get_coin_info(symbol):
     """
@@ -391,7 +451,7 @@ def check_pending_orders():
 
 #     return significant_coins  # Eşik değeri aşan coinlerin listesini döndür
 
-def filter_coins_by_percentage_and_volume(tickers, threshold_percentage=5.0, min_volume=1000, max_volume=10000000):
+def filter_coins_by_percentage_and_volume(tickers, threshold_percentage=5.0, min_volume=125000, max_volume=10000000):
     """
     Belirli bir değişim yüzdesi ve hacim aralığına göre coinleri filtreler.
     """
