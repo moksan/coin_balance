@@ -25,8 +25,8 @@ sell_lock = threading.Lock()
 
 
 # Telegram Bot API token ve chat ID'nizi girin
-telegram_api_token = '7476798156:AAETrZkG5rsuKGcxTWrVIXPfC6bx3G1orDE'
-chat_id = '1130567592'
+telegram_api_token = '7289217723:AAEAjoHDoTuBysblDsefb9aZ5QDsGPZwpv8'
+chat_id = '7503089535'
 app = ApplicationBuilder().token(telegram_api_token).build()
 
 # Telegram Bot nesnesini oluşturun
@@ -259,7 +259,9 @@ def buy_coin(symbol, amount):
     return None
 
 
-def execute_sell(coin, amount):
+#def execute_sell(coin, amount):
+def execute_sell(coin, amount,sell_price):
+
     """
     Verilen miktarda coin satım işlemi yapar ve satım işlemi sonrası USDT bakiyesini döndürür.
     """
@@ -282,7 +284,8 @@ def execute_sell(coin, amount):
             amount = available_amount
 
         # Satış işlemi
-        sell_result = binance.create_market_sell_order(coin, amount)
+#        sell_result = binance.create_market_sell_order(coin, amount)
+        sell_result = binance.create_limit_sell_order(coin, amount, sell_price)
         sell_price = sell_result['price']
         print_with_timestamp(f"Sold {amount} of {coin}")
         sell_time = datetime.now().isoformat()
@@ -315,13 +318,13 @@ def manage_sell(coin, amount, stop_loss_price, take_profit_price):
         # Stop-Loss kontrolü
         if current_price <= stop_loss_price:
             print_with_timestamp(f"Stop-Loss triggered for {coin}. Current Price: {current_price}, Stop-Loss Price: {stop_loss_price}")
-            return execute_sell(coin, amount)
-
+            #return execute_sell(coin, amount)
+            return execute_sell(coin, amount,stop_loss_price)
         # Kâr Alım kontrolü
         elif current_price >= take_profit_price:
             print_with_timestamp(f"Take-Profit triggered for {coin}. Current Price: {current_price}, Take-Profit Price: {take_profit_price}")
-            return execute_sell(coin, amount)
-
+            #return execute_sell(coin, amount)
+            return execute_sell(coin, amount,take_profit_price)
         else:
             print_with_timestamp(f"Holding {coin}. Current Price: {current_price}, Stop-Loss Price: {stop_loss_price}, Take-Profit Price: {take_profit_price}")
 
@@ -356,6 +359,19 @@ def get_coin_info(symbol):
         print_with_timestamp(f"An error occurred while fetching coin info for {symbol}: {e}")
         return None
 
+def check_pending_orders():
+    """
+    Binance üzerinde bekleyen (open) limit emirleri kontrol eder.
+    Eğer bekleyen emir varsa, o coini tekrar işlem yapmadan beklemeye alır.
+    """
+    try:
+        open_orders = binance.fetch_open_orders()
+        pending_coins = {order['symbol'] for order in open_orders if order['status'] == 'open'}
+        return pending_coins
+    except ccxt.BaseError as e:
+        print_with_timestamp(f"An error occurred while fetching open orders: {e}")
+        return set()
+    
 # def filter_coins_by_percentage(tickers, threshold_percentage=5.0):
 #     """
 #     Belirli bir değişim yüzdesi eşiğine göre coinleri filtreler.
@@ -439,8 +455,10 @@ def monitor_buy_conditions(threshold_percentage=5.0):
     active_usdt_pairs = get_active_usdt_pairs()
     while True:
         filtered_coins = get_filtered_coins(active_usdt_pairs, threshold_percentage)
+        pending_coins = check_pending_orders()  # Bekleyen emirleri kontrol et
+
         for coin, threshold in filtered_coins:
-            if coin not in bought_coins and coin not in sold_coins:  # Satılan ve alınan coinler tekrar alınmaz
+            if coin not in bought_coins and coin not in sold_coins and coin not in pending_coins:  # Satılan ve alınan coinler tekrar alınmaz
                 is_green, open_price = is_green_candle(coin, threshold)
                 if is_green:
                     # Alım koşulları sağlanırsa alım yap
@@ -471,7 +489,7 @@ def monitor_sell_conditions():
             # Satılmamış coinleri kontrol edin.
             for coin, info in list(unsold_coins.items()):
                 stop_loss_price = info['buy_price'] * 0.90  # %5 zarar stop-loss
-                take_profit_price = info['buy_price'] * 1.005  # %5 kar take-profit
+                take_profit_price = info['buy_price'] * 1.05  # %5 kar take-profit
                 sell_result = manage_sell(coin, info['amount'], stop_loss_price, take_profit_price)
                 
                 if sell_result is not None:
