@@ -312,7 +312,7 @@ def create_take_profit_order(symbol, amount, take_profit_price):
     try:
         order = binance.create_limit_sell_order(symbol, amount, take_profit_price)
         print_with_timestamp(f"Take-Profit emri oluşturuldu: {order}")
-        return order
+        return order['orderId']  # 'orderId' kullanılıyor
     except ccxt.BaseError as e:
         print_with_timestamp(f"Take-Profit emri oluşturulurken hata oluştu: {e}")
         return None
@@ -326,10 +326,11 @@ def create_stop_loss_order(symbol, amount, stop_loss_price, stop_loss_limit_pric
             'stopPrice': stop_loss_price  # Stop-Loss tetikleyici fiyat
         })
         print_with_timestamp(f"Stop-Loss emri oluşturuldu: {order}")
-        return order
+        return order['orderId']  # 'orderId' kullanılıyor
     except ccxt.BaseError as e:
         print_with_timestamp(f"Stop-Loss emri oluşturulurken hata oluştu: {e}")
         return None
+
 
 
 def get_coin_info(symbol):
@@ -396,13 +397,13 @@ def monitor_orders(take_profit_order, stop_loss_order, coin, stop_event):
             open_orders = binance.fetch_open_orders(symbol=coin)
 
             # Eğer Take-Profit emri tetiklendiyse Stop-Loss'u iptal et
-            if not any(order['id'] == take_profit_order['id'] for order in open_orders):
+            if not any(order['orderId'] == take_profit_order for order in open_orders):  # 'id' yerine 'orderId'
                 print_with_timestamp(f"Take-Profit emri tetiklendi, Stop-Loss emri iptal ediliyor.")
                 if stop_loss_order:
-                    binance.cancel_order(stop_loss_order['id'], coin)
+                    binance.cancel_order(stop_loss_order, coin)  # 'id' yerine 'orderId'
 
                 # Take-Profit emri detaylarını Binance'dan al
-                take_profit_order_info = binance.fetch_order(take_profit_order['id'], symbol=coin)
+                take_profit_order_info = binance.fetch_order(take_profit_order, symbol=coin)
                 sell_amount = take_profit_order_info['filled']  # Gerçekleşen miktar
                 sell_price = take_profit_order_info['average']  # Gerçekleşen ortalama fiyat
 
@@ -422,13 +423,13 @@ def monitor_orders(take_profit_order, stop_loss_order, coin, stop_event):
                 return sell_usdt_balance
 
             # Eğer Stop-Loss emri tetiklendiyse Take-Profit'i iptal et
-            if not any(order['id'] == stop_loss_order['id'] for order in open_orders):
+            if not any(order['orderId'] == stop_loss_order for order in open_orders):  # 'id' yerine 'orderId'
                 print_with_timestamp(f"Stop-Loss emri tetiklendi, Take-Profit emri iptal ediliyor.")
                 if take_profit_order:
-                    binance.cancel_order(take_profit_order['id'], coin)
+                    binance.cancel_order(take_profit_order, coin)  # 'id' yerine 'orderId'
 
                 # Stop-Loss emri detaylarını Binance'dan al
-                stop_loss_order_info = binance.fetch_order(stop_loss_order['id'], symbol=coin)
+                stop_loss_order_info = binance.fetch_order(stop_loss_order, symbol=coin)
                 sell_amount = stop_loss_order_info['filled']  # Gerçekleşen miktar
                 sell_price = stop_loss_order_info['average']  # Gerçekleşen ortalama fiyat
 
@@ -486,7 +487,7 @@ def manage_sell(coin, amount, stop_loss_price, take_profit_price):
             print_with_timestamp(f"Not enough balance to sell {amount} of {coin}. Available: {available_amount}")
             amount = available_amount
         # Eğer açık emir yoksa yeni emirler oluşturulacak
-        stop_loss_limit_price = stop_loss_price * 0.995  # Stop-Loss tetiklendiğinde limit fiyat
+        stop_loss_limit_price = stop_loss_price * 1.0  # Stop-Loss tetiklendiğinde limit fiyat
 
         # Take-Profit ve Stop-Loss emirlerini oluştur
         take_profit_order = create_take_profit_order(coin, amount, take_profit_price)
