@@ -338,33 +338,26 @@ def execute_sell(coin, amount,sell_price):
 #     return None
 def create_oco_order(symbol, amount, take_profit_price, stop_loss_price, stop_loss_limit_price):
     """
-    Binance'de OCO emri oluşturur. 
-    Take-Profit ve Stop-Loss fiyatlarını belirler.
+    Binance'de OCO (One Cancels the Other) emri oluşturur. 
+    Bu fonksiyon, hem Stop-Loss hem de Take-Profit fiyatları ile bir OCO emri gönderir.
     """
     try:
-        params = {
-            'stopPrice': stop_loss_price,  # Stop-Loss tetikleyici fiyat
-            'type': 'OCO',  # OCO emri tipi
-            'stopLimitPrice': stop_loss_limit_price,  # Stop-Loss limit fiyatı
-            'stopLimitTimeInForce': 'GTC',  # Emrin geçerlilik süresi
-        }
-
-        order = binance.private_post_order_oco(
-            symbol=symbol,
-            side='sell',
-            quantity=amount,
-            price=take_profit_price,  # Take-Profit fiyatı
-            stopPrice=stop_loss_price,  # Stop-Loss tetikleyici fiyatı
-            stopLimitPrice=stop_loss_limit_price,  # Stop-Loss limit fiyatı
-            stopLimitTimeInForce='GTC',  # Stop-Loss geçerlilik süresi
-            params=params
-        )
+        order = binance.sapi_post_order_oco({
+            'symbol': symbol,  # İşlem yapılacak coin çifti
+            'side': 'SELL',  # Satış emri
+            'quantity': amount,  # Satılacak miktar
+            'price': take_profit_price,  # Kar alım fiyatı (Take-Profit)
+            'stopPrice': stop_loss_price,  # Stop-Loss tetikleyici fiyatı
+            'stopLimitPrice': stop_loss_limit_price,  # Stop-Loss Limit fiyatı
+            'stopLimitTimeInForce': 'GTC'  # Stop-Loss emrinin geçerlilik süresi
+        })
         print_with_timestamp(f"OCO emri başarıyla oluşturuldu: {order}")
         return order
 
     except ccxt.BaseError as e:
         print_with_timestamp(f"OCO emri oluşturulurken hata oluştu: {e}")
         return None
+
 
 def manage_sell(coin, amount, stop_loss_price, take_profit_price):
     """
@@ -379,13 +372,19 @@ def manage_sell(coin, amount, stop_loss_price, take_profit_price):
         stop_loss_limit_price = stop_loss_price * 0.995  # Stop-Loss tetiklendiğinde limit fiyat (örneğin %0.5 altında)
 
         # OCO emrini oluştur
-        create_oco_order(
+        order = create_oco_order(
             symbol=coin,
             amount=amount,
             take_profit_price=take_profit_price,  # Kar alım fiyatı
             stop_loss_price=stop_loss_price,  # Stop-Loss tetikleyici fiyat
             stop_loss_limit_price=stop_loss_limit_price  # Stop-Loss gerçekleştiğinde satılacak fiyat
         )
+
+        if order:
+            print_with_timestamp(f"OCO emri başarıyla verildi: {order}")
+        else:
+            print_with_timestamp(f"OCO emri verilemedi.")
+        
 
     except ccxt.RequestTimeout:
         print_with_timestamp(f"Request timeout while managing OCO sell for {coin}. Retrying...")
@@ -515,10 +514,11 @@ def monitor_buy_conditions(threshold_percentage=5.0):
     active_usdt_pairs = get_active_usdt_pairs()
     while True:
         filtered_coins = get_filtered_coins(active_usdt_pairs, threshold_percentage)
-        pending_coins = check_pending_orders()  # Bekleyen emirleri kontrol et
+        #pending_coins = check_pending_orders()  # Bekleyen emirleri kontrol et
 
         for coin, threshold in filtered_coins:
-            if coin not in bought_coins and coin not in sold_coins and coin not in pending_coins:  # Satılan ve alınan coinler tekrar alınmaz
+            #if coin not in bought_coins and coin not in sold_coins and coin not in pending_coins:  # Satılan ve alınan coinler tekrar alınmaz
+            if coin not in bought_coins and coin not in sold_coins:  # Satılan ve alınan coinler tekrar alınmaz
                 is_green, open_price = is_green_candle(coin, threshold)
                 if is_green:
                     # Alım koşulları sağlanırsa alım yap
