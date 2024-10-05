@@ -336,64 +336,31 @@ def execute_sell(coin, amount,sell_price):
 #         print_with_timestamp(f"An unknown error occurred: {e}")
     
 #     return None
-def create_oco_order(symbol, amount, take_profit_price, stop_loss_price, stop_loss_limit_price):
+def create_take_profit_order(symbol, amount, take_profit_price):
     """
-    Binance'de OCO (One Cancels the Other) emri oluşturur. 
-    Bu fonksiyon, hem Stop-Loss hem de Take-Profit fiyatları ile bir OCO emri gönderir.
+    Take-Profit limiti ile satış emri oluşturur.
     """
     try:
-        order = binance.sapi_post_order_oco({
-            'symbol': symbol,  # İşlem yapılacak coin çifti
-            'side': 'SELL',  # Satış emri
-            'quantity': amount,  # Satılacak miktar
-            'price': take_profit_price,  # Kar alım fiyatı (Take-Profit)
-            'stopPrice': stop_loss_price,  # Stop-Loss tetikleyici fiyatı
-            'stopLimitPrice': stop_loss_limit_price,  # Stop-Loss Limit fiyatı
-            'stopLimitTimeInForce': 'GTC'  # Stop-Loss emrinin geçerlilik süresi
-        })
-        print_with_timestamp(f"OCO emri başarıyla oluşturuldu: {order}")
+        order = binance.create_limit_sell_order(symbol, amount, take_profit_price)
+        print_with_timestamp(f"Take-Profit emri oluşturuldu: {order}")
         return order
-
     except ccxt.BaseError as e:
-        print_with_timestamp(f"OCO emri oluşturulurken hata oluştu: {e}")
+        print_with_timestamp(f"Take-Profit emri oluşturulurken hata oluştu: {e}")
         return None
 
-
-def manage_sell(coin, amount, stop_loss_price, take_profit_price):
+def create_stop_loss_order(symbol, amount, stop_loss_price, stop_loss_limit_price):
     """
-    Coin'in stop-loss veya take-profit seviyelerine ulaşıp ulaşmadığını kontrol eder
-    ve OCO (One-Cancels-the-Other) yöntemiyle satış yapar.
+    Stop-Loss limiti ile satış emri oluşturur.
     """
     try:
-        ticker = binance.fetch_ticker(coin)
-        current_price = ticker['last'] if ticker['last'] is not None else ticker['close']
-        
-        # Stop-Loss ve Take-Profit limit fiyatı belirleme (biraz fiyat altında olabilir)
-        stop_loss_limit_price = stop_loss_price * 0.995  # Stop-Loss tetiklendiğinde limit fiyat (örneğin %0.5 altında)
-
-        # OCO emrini oluştur
-        order = create_oco_order(
-            symbol=coin,
-            amount=amount,
-            take_profit_price=take_profit_price,  # Kar alım fiyatı
-            stop_loss_price=stop_loss_price,  # Stop-Loss tetikleyici fiyat
-            stop_loss_limit_price=stop_loss_limit_price  # Stop-Loss gerçekleştiğinde satılacak fiyat
-        )
-
-        if order:
-            print_with_timestamp(f"OCO emri başarıyla verildi: {order}")
-        else:
-            print_with_timestamp(f"OCO emri verilemedi.")
-        
-
-    except ccxt.RequestTimeout:
-        print_with_timestamp(f"Request timeout while managing OCO sell for {coin}. Retrying...")
+        order = binance.create_order(symbol, 'limit', 'sell', amount, stop_loss_limit_price, {
+            'stopPrice': stop_loss_price  # Stop-Loss tetikleyici fiyat
+        })
+        print_with_timestamp(f"Stop-Loss emri oluşturuldu: {order}")
+        return order
     except ccxt.BaseError as e:
-        print_with_timestamp(f"An error occurred while managing OCO sell for {coin}: {e}")
-    except Exception as e:
-        print_with_timestamp(f"An unknown error occurred: {e}")
-    
-    return None
+        print_with_timestamp(f"Stop-Loss emri oluşturulurken hata oluştu: {e}")
+        return None
 
 
 def get_coin_info(symbol):
@@ -449,6 +416,72 @@ def check_pending_orders():
 #             #print_with_timestamp(f"No significant change for {symbol}. Current Change: {price_change_percent:.2f}%")
 
 #     return significant_coins  # Eşik değeri aşan coinlerin listesini döndür
+def monitor_orders(take_profit_order, stop_loss_order, coin, stop_event):
+    """
+    Satış emirlerini izler ve biri tetiklendiğinde diğerini iptal eder.
+    Bu fonksiyon bağımsız bir thread içinde çalışır, ana işlemleri bloklamaz.
+    """
+    try:
+        while not stop_event.is_set():  # stop_event tetiklenmedikçe döngü devam eder
+            open_orders = binance.fetch_open_orders(symbol=coin)
+
+            # Eğer Take-Profit emri tetiklendiyse Stop-Loss'u iptal et
+            if not any(order['id'] == take_profit_order['id'] for order in open_orders):
+                print_with_timestamp(f"Take-Profit emri tetiklendi, Stop-Loss emri iptal ediliyor.")
+                binance.cancel_order(stop_loss_order['id'], coin)
+                stop_event.set()  # Döngüden çıkılır
+                break
+
+            # Eğer Stop-Loss emri tetiklendiyse Take-Profit'i iptal et
+            if not any(order['id'] == stop_loss_order['id'] for order in open_orders):
+                print_with_timestamp(f"Stop-Loss emri tetiklendi, Take-Profit emri iptal ediliyor.")
+                binance.cancel_order(take_profit_order['id'], coin)
+                stop_event.set()  # Döngüden çıkılır
+                break
+
+            time.sleep(2)  # 2 saniye bekleyip durumu tekrar kontrol et
+    except ccxt.BaseError as e:
+        print_with_timestamp(f"An error occurred while monitoring orders for {coin}: {e}")
+        stop_event.set()  # Hata olursa döngü sonlanır
+    except Exception as e:
+        print_with_timestamp(f"An unknown error occurred: {e}")
+        stop_event.set()  # Genel hata olursa da döngü sonlanır
+
+def manage_sell(coin, amount, stop_loss_price, take_profit_price):
+    """
+    Coin'in stop-loss veya take-profit seviyelerine ulaşıp ulaşmadığını kontrol eder ve iki ayrı emir verir.
+    Emirlerden biri tetiklenirse diğerini iptal eder.
+    """
+    stop_event = threading.Event()  # Döngüyü durdurmak için Event
+
+    try:
+        # Stop-Loss Limit Fiyatı
+        stop_loss_limit_price = stop_loss_price * 0.995  # Stop-Loss tetiklendiğinde limit fiyat (örneğin %0.5 altında)
+
+        # Take-Profit ve Stop-Loss emirlerini oluştur
+        take_profit_order = create_take_profit_order(coin, amount, take_profit_price)
+        stop_loss_order = create_stop_loss_order(coin, amount, stop_loss_price, stop_loss_limit_price)
+
+        if take_profit_order and stop_loss_order:
+            print_with_timestamp("Hem Take-Profit hem de Stop-Loss emirleri başarıyla oluşturuldu.")
+            
+            # Satış emirlerini izlemeye başla, ancak ana thread'i bloklama
+            monitor_thread = threading.Thread(target=monitor_orders, args=(take_profit_order, stop_loss_order, coin, stop_event))
+            monitor_thread.start()  # monitor_orders bağımsız bir thread olarak başlatılır
+        else:
+            print_with_timestamp("Emirlerden biri oluşturulamadı.")
+        
+    except ccxt.RequestTimeout:
+        print_with_timestamp(f"Request timeout while managing sell for {coin}. Retrying...")
+        stop_event.set()  # Hata durumunda Event tetiklenir
+    except ccxt.BaseError as e:
+        print_with_timestamp(f"An error occurred while managing sell for {coin}: {e}")
+        stop_event.set()  # Hata durumunda Event tetiklenir
+    except Exception as e:
+        print_with_timestamp(f"An unknown error occurred: {e}")
+        stop_event.set()  # Hata durumunda Event tetiklenir
+    
+    return None
 
 def filter_coins_by_percentage_and_volume(tickers, threshold_percentage=5.0, min_volume=125000, max_volume=10000000):
     """
