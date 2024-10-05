@@ -429,15 +429,27 @@ def monitor_orders(take_profit_order, stop_loss_order, coin, stop_event):
             if not any(order['id'] == take_profit_order['id'] for order in open_orders):
                 print_with_timestamp(f"Take-Profit emri tetiklendi, Stop-Loss emri iptal ediliyor.")
                 binance.cancel_order(stop_loss_order['id'], coin)
+                sell_time = datetime.now().isoformat()
+                message = f"Sold {coin} at {sell_time}"
+                send_telegram_message_sync(message)
+                sell_usdt_balance = binance.fetch_balance()['USDT']['free']
+                print_with_timestamp(f"Updated USDT balance after selling {coin}: {sell_usdt_balance}")
                 stop_event.set()  # Döngüden çıkılır
-                break
+                #break
+                return sell_usdt_balance
 
             # Eğer Stop-Loss emri tetiklendiyse Take-Profit'i iptal et
             if not any(order['id'] == stop_loss_order['id'] for order in open_orders):
                 print_with_timestamp(f"Stop-Loss emri tetiklendi, Take-Profit emri iptal ediliyor.")
                 binance.cancel_order(take_profit_order['id'], coin)
+                sell_time = datetime.now().isoformat()
+                message = f"Sold {coin} at {sell_time}"
+                send_telegram_message_sync(message)
+                sell_usdt_balance = binance.fetch_balance()['USDT']['free']
+                print_with_timestamp(f"Updated USDT balance after selling {coin}: {sell_usdt_balance}")
                 stop_event.set()  # Döngüden çıkılır
-                break
+                #break
+                return sell_usdt_balance
 
             time.sleep(2)  # 2 saniye bekleyip durumu tekrar kontrol et
     except ccxt.BaseError as e:
@@ -455,8 +467,29 @@ def manage_sell(coin, amount, stop_loss_price, take_profit_price):
     stop_event = threading.Event()  # Döngüyü durdurmak için Event
 
     try:
-        # Stop-Loss Limit Fiyatı
-        stop_loss_limit_price = stop_loss_price * 0.995  # Stop-Loss tetiklendiğinde limit fiyat (örneğin %0.5 altında)
+        # Öncelikle, bu coin için zaten aktif bir emir olup olmadığını kontrol edin
+        open_orders = binance.fetch_open_orders(symbol=coin)
+        if open_orders:
+            print_with_timestamp(f"{coin} için zaten açık emirler var, yeni emir oluşturulmayacak.")
+            return None
+        market = binance.markets[coin]
+        precision = market['precision']['amount']
+        amount = round(amount, int(precision))
+        min_amount = market['limits']['amount']['min']
+        
+        # Minimum miktar kontrolü
+        if amount < min_amount:
+            print_with_timestamp(f"Amount {amount} is less than minimum allowed {min_amount} for {coin}. Adjusting amount to minimum.")
+            amount = min_amount
+
+        balance = binance.fetch_balance()
+        symbol_base = coin.split('/')[0]
+        available_amount = balance[symbol_base]['free']
+        if amount > available_amount:
+            print_with_timestamp(f"Not enough balance to sell {amount} of {coin}. Available: {available_amount}")
+            amount = available_amount
+        # Eğer açık emir yoksa yeni emirler oluşturulacak
+        stop_loss_limit_price = stop_loss_price * 0.995  # Stop-Loss tetiklendiğinde limit fiyat
 
         # Take-Profit ve Stop-Loss emirlerini oluştur
         take_profit_order = create_take_profit_order(coin, amount, take_profit_price)
@@ -470,7 +503,10 @@ def manage_sell(coin, amount, stop_loss_price, take_profit_price):
             monitor_thread.start()  # monitor_orders bağımsız bir thread olarak başlatılır
         else:
             print_with_timestamp("Emirlerden biri oluşturulamadı.")
-        
+
+    
+    except ccxt.InsufficientFunds as e:
+        print_with_timestamp(f"Insufficient funds to sell {coin}: {e}")
     except ccxt.RequestTimeout:
         print_with_timestamp(f"Request timeout while managing sell for {coin}. Retrying...")
         stop_event.set()  # Hata durumunda Event tetiklenir
