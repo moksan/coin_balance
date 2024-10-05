@@ -519,7 +519,7 @@ def manage_sell(coin, amount, stop_loss_price, take_profit_price):
     
     return None
 
-def filter_coins_by_percentage_and_volume(tickers, threshold_percentage=5.0, min_volume=125000, max_volume=10000000):
+def filter_coins_by_percentage_and_volume(tickers, threshold_percentage=1.0, min_volume=125000, max_volume=10000000):
     """
     Belirli bir değişim yüzdesi ve hacim aralığına göre coinleri filtreler.
     """
@@ -539,14 +539,14 @@ def filter_coins_by_percentage_and_volume(tickers, threshold_percentage=5.0, min
 
     return significant_coins  # Eşik değeri aşan ve belirli hacimdeki coinlerin listesini döndür
 
-def monitor_price_change_percentage(tickers, threshold_percentage=5.0):
+def monitor_price_change_percentage(tickers, threshold_percentage=1.0):
     """
     Coinlerin günlük değişim bilgilerini ve hacimlerini kontrol eder ve belirtilen eşiği geçenleri listeler.
     """
     filtered_coins = filter_coins_by_percentage_and_volume(tickers, threshold_percentage)
     return filtered_coins
 
-def get_filtered_coins(active_usdt_pairs, threshold_percentage=5.0):
+def get_filtered_coins(active_usdt_pairs, threshold_percentage=1.0):
     """
     Aktif USDT paritelerinin listesini alır ve belirli hacim ve değişim yüzdesi eşiklerini karşılayanları filtreler.
     """
@@ -575,7 +575,7 @@ def get_filtered_coins(active_usdt_pairs, threshold_percentage=5.0):
     
     return filtered_coins
 
-def monitor_buy_conditions(threshold_percentage=5.0):
+def monitor_buy_conditions(threshold_percentage=1.0):
     """
     Alım işlemlerini sürekli kontrol eder ve uygun koşullar sağlandığında alım yapar.
     """
