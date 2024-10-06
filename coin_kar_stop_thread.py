@@ -208,7 +208,7 @@ def get_volume_threshold(daily_volume):
     """
     Hacim eşiklerini kontrol eder ve belirlenen hacim seviyelerine göre bir eşik döndürür.
     """
-    volume_thresholds = [(10000000, 50000)]
+    volume_thresholds = [(10000000, 1000)]
     for threshold, minute_volume in volume_thresholds:
         if daily_volume < threshold:
             return minute_volume
@@ -312,7 +312,7 @@ def create_take_profit_order(symbol, amount, take_profit_price):
     try:
         order = binance.create_limit_sell_order(symbol, amount, take_profit_price)
         print_with_timestamp(f"Take-Profit emri oluşturuldu: {order}")
-        return order['info']['orderId']  # 'orderId' 'info' içinde kullanılıyor
+        return order['id']  # 'orderId' 'info' içinde kullanılıyor
     except ccxt.BaseError as e:
         print_with_timestamp(f"Take-Profit emri oluşturulurken hata oluştu: {e}")
         return None
@@ -327,7 +327,7 @@ def create_stop_loss_order(symbol, amount, stop_loss_price, stop_loss_limit_pric
             'stopPrice': stop_loss_price  # Stop-Loss tetikleyici fiyat
         })
         print_with_timestamp(f"Stop-Loss emri oluşturuldu: {order}")
-        return order['info']['orderId']  # 'orderId' 'info' içinde kullanılıyor
+        return order['id']  # 'orderId' 'info' içinde kullanılıyor
     except ccxt.BaseError as e:
         print_with_timestamp(f"Stop-Loss emri oluşturulurken hata oluştu: {e}")
         return None
@@ -387,7 +387,7 @@ def check_pending_orders():
 
 #     return significant_coins  # Eşik değeri aşan coinlerin listesini döndür
 
-def monitor_orders(take_profit_order, stop_loss_order, coin, stop_event):
+def monitor_orders(take_profit_order_id, stop_loss_order_id, coin, stop_event):
     """
     Satış emirlerini izler ve biri tetiklendiğinde diğerini iptal eder.
     Bu fonksiyon bağımsız bir thread içinde çalışır, ana işlemleri bloklamaz.
@@ -396,71 +396,53 @@ def monitor_orders(take_profit_order, stop_loss_order, coin, stop_event):
         while not stop_event.is_set():  # stop_event tetiklenmedikçe döngü devam eder
             open_orders = binance.fetch_open_orders(symbol=coin)
 
-            # Eğer Take-Profit emri tetiklendiyse Stop-Loss'u iptal et
-            #if not any(order['orderId'] == take_profit_order for order in open_orders):  # 'id' yerine 'orderId'
-            if not any(order['info']['orderId'] == take_profit_order['info']['orderId'] for order in open_orders):
-
+            # Eğer Take-Profit emri tetiklendi ise Stop-Loss'u iptal et
+            if take_profit_order_id and not any(order['id'] == take_profit_order_id for order in open_orders):
                 print_with_timestamp(f"Take-Profit emri tetiklendi, Stop-Loss emri iptal ediliyor.")
-                if stop_loss_order:
-                    #binance.cancel_order(stop_loss_order, coin)  # 'id' yerine 'orderId'
-                    binance.cancel_order(stop_loss_order['info']['orderId'], coin)
+                if stop_loss_order_id:
+                    binance.cancel_order(stop_loss_order_id, coin)
 
                 # Take-Profit emri detaylarını Binance'dan al
-                take_profit_order_info = binance.fetch_order(take_profit_order, symbol=coin)
-                sell_amount = take_profit_order_info['filled']  # Gerçekleşen miktar
-                sell_price = take_profit_order_info['average']  # Gerçekleşen ortalama fiyat
-
-                # Satış gerçekleştirildi, sold_coins listesine ekle ve unsold_coins'ten çıkar
+                take_profit_order_info = binance.fetch_order(str(take_profit_order_id), symbol=coin)
+                sell_amount = take_profit_order_info['filled']
+                sell_price = take_profit_order_info['average']
                 sold_coins[coin] = True
                 save_sold_coins(sold_coins)
                 if coin in unsold_coins:
-                    del unsold_coins[coin]  # Satılan coini unsold_coins listesinden çıkar
-
-                # Satış bilgilerini Telegram'a gönder
+                    del unsold_coins[coin]
                 sell_time = datetime.now().isoformat()
                 message = f"Take-Profit: Sold {sell_amount} of {coin} at {sell_price} on {sell_time}"
                 send_telegram_message_sync(message)
-                sell_usdt_balance = binance.fetch_balance()['USDT']['free']
-                print_with_timestamp(f"Updated USDT balance after selling {coin}: {sell_usdt_balance}")
-                stop_event.set()  # Döngüden çıkılır
-                return sell_usdt_balance
+                stop_event.set()
+                return
 
-            # Eğer Stop-Loss emri tetiklendiyse Take-Profit'i iptal et
-            #if not any(order['orderId'] == stop_loss_order for order in open_orders):  # 'id' yerine 'orderId'
-            if not any(order['info']['orderId'] == stop_loss_order['info']['orderId'] for order in open_orders):
-
+            # Eğer Stop-Loss emri tetiklendi ise Take-Profit'i iptal et
+            if stop_loss_order_id and not any(order['id'] == stop_loss_order_id for order in open_orders):
                 print_with_timestamp(f"Stop-Loss emri tetiklendi, Take-Profit emri iptal ediliyor.")
-                if take_profit_order:
-                    #binance.cancel_order(take_profit_order, coin)  # 'id' yerine 'orderId'
-                    binance.cancel_order(take_profit_order['info']['orderId'], coin)
+                if take_profit_order_id:
+                    binance.cancel_order(take_profit_order_id, coin)
 
                 # Stop-Loss emri detaylarını Binance'dan al
-                stop_loss_order_info = binance.fetch_order(stop_loss_order, symbol=coin)
-                sell_amount = stop_loss_order_info['filled']  # Gerçekleşen miktar
-                sell_price = stop_loss_order_info['average']  # Gerçekleşen ortalama fiyat
-
-                # Satış gerçekleştirildi, sold_coins listesine ekle ve unsold_coins'ten çıkar
+                stop_loss_order_info = binance.fetch_order(stop_loss_order_id, symbol=coin)
+                sell_amount = stop_loss_order_info['filled']
+                sell_price = stop_loss_order_info['average']
                 sold_coins[coin] = True
                 save_sold_coins(sold_coins)
                 if coin in unsold_coins:
-                    del unsold_coins[coin]  # Satılan coini unsold_coins listesinden çıkar
-
-                # Satış bilgilerini Telegram'a gönder
+                    del unsold_coins[coin]
                 sell_time = datetime.now().isoformat()
                 message = f"Stop-Loss: Sold {sell_amount} of {coin} at {sell_price} on {sell_time}"
                 send_telegram_message_sync(message)
-                sell_usdt_balance = binance.fetch_balance()['USDT']['free']
-                print_with_timestamp(f"Updated USDT balance after selling {coin}: {sell_usdt_balance}")
-                stop_event.set()  # Döngüden çıkılır
-                return sell_usdt_balance
+                stop_event.set()
+                return
 
             time.sleep(2)  # 2 saniye bekleyip durumu tekrar kontrol et
     except ccxt.BaseError as e:
         print_with_timestamp(f"An error occurred while monitoring orders for {coin}: {e}")
-        stop_event.set()  # Hata olursa döngü sonlanır
+        stop_event.set()
     except Exception as e:
         print_with_timestamp(f"Monitor-An unknown error occurred: {e}")
-        stop_event.set()  # Genel hata olursa da döngü sonlanır
+        stop_event.set()
 
 
 def manage_sell(coin, amount, stop_loss_price, take_profit_price):
@@ -476,6 +458,7 @@ def manage_sell(coin, amount, stop_loss_price, take_profit_price):
         if open_orders:
             print_with_timestamp(f"{coin} için zaten açık emirler var, yeni emir oluşturulmayacak.")
             return None
+        
         market = binance.markets[coin]
         precision = market['precision']['amount']
         amount = round(amount, int(precision))
@@ -502,11 +485,16 @@ def manage_sell(coin, amount, stop_loss_price, take_profit_price):
         if take_profit_order or stop_loss_order:
             print_with_timestamp("Take-Profit veya Stop-Loss emirleri başarıyla oluşturuldu.")
 
-            valid_take_profit_order = take_profit_order if take_profit_order else {'id': None}
-            valid_stop_loss_order = stop_loss_order if stop_loss_order else {'id': None}
+            # Eğer emir oluşturulmamışsa, değişkenleri None olarak ayarla
+            valid_take_profit_order = take_profit_order if take_profit_order else None
+            valid_stop_loss_order = stop_loss_order if stop_loss_order else None
 
             # Satış emirlerini izlemeye başla, ancak ana thread'i bloklama
-            monitor_thread = threading.Thread(target=monitor_orders, args=(valid_take_profit_order, valid_stop_loss_order, coin, stop_event))
+            monitor_thread = threading.Thread(
+                target=monitor_orders,
+                args=(valid_take_profit_order, valid_stop_loss_order, coin, stop_event)
+            )
+
             monitor_thread.start()  # monitor_orders bağımsız bir thread olarak başlatılır
 
         else:
@@ -625,21 +613,22 @@ def monitor_sell_conditions():
         with sell_lock:
             # Satılmamış coinleri kontrol edin.
             for coin, info in list(unsold_coins.items()):
-                stop_loss_price = info['buy_price'] * 0.90  # %5 zarar stop-loss
-                take_profit_price = info['buy_price'] * 1.01  # %5 kar take-profit
-                #sell_result = manage_sell(coin, info['amount'], stop_loss_price, take_profit_price)
-                manage_sell(coin, info['amount'], stop_loss_price, take_profit_price)
+                if coin not in sold_coins and coin in unsold_coins:
+                    stop_loss_price = info['buy_price'] * 0.90  # %5 zarar stop-loss
+                    take_profit_price = info['buy_price'] * 1.01  # %5 kar take-profit
+                    #sell_result = manage_sell(coin, info['amount'], stop_loss_price, take_profit_price)
+                    manage_sell(coin, info['amount'], stop_loss_price, take_profit_price)
 
-                # if sell_result is not None:
-                #     # Satış gerçekleştirildi, sold_coins listesine ekle ve unsold_coins'ten çıkar
-                #     sold_coins[coin] = True  
-                #     save_sold_coins(sold_coins)
-                #     del unsold_coins[coin]  # Satılan coini unsold_coins listesinden çıkar
-                #     #del bought_coins[coin]  # Satılan coini bought_coins listesinden de çıkar
-                #     #save_bought_coins(bought_coins)  # Satış sonrasında bought_coins listesini kaydet
-                # else:
-                #     # Satılmamış coinler `unsold_coins` listesinde kalmaya devam eder
-                #     print_with_timestamp(f"No sale yet for {coin}. It will be checked again.")
+                    # if sell_result is not None:
+                    #     # Satış gerçekleştirildi, sold_coins listesine ekle ve unsold_coins'ten çıkar
+                    #     sold_coins[coin] = True  
+                    #     save_sold_coins(sold_coins)
+                    #     del unsold_coins[coin]  # Satılan coini unsold_coins listesinden çıkar
+                    #     #del bought_coins[coin]  # Satılan coini bought_coins listesinden de çıkar
+                    #     #save_bought_coins(bought_coins)  # Satış sonrasında bought_coins listesini kaydet
+                    # else:
+                    #     # Satılmamış coinler `unsold_coins` listesinde kalmaya devam eder
+                    #     print_with_timestamp(f"No sale yet for {coin}. It will be checked again.")
                     
         time.sleep(2)  # Daha kısa bir bekleme süresi kullanarak işlem fırsatlarını kaçırmaktan kaçının
 
