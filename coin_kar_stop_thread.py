@@ -10,8 +10,8 @@ from telegram.ext import ApplicationBuilder
 import requests
 
 # Binance API anahtarlarınızı buraya girin
-api_key = 'UEdOrV9SRIJcWUiOcahwnJGh4lui7vKdnmoed52zEugnlkYEyrfsn79FpyYvAuAo'
-secret_key = 'p836sxo8xL036P7y7dfFR0YH5oyhSThP7PG8IMegtAfq7KXd6M1RoLSFeVOxX0vL'
+api_key = 
+secret_key = 
 
 # Global değişken olarak binance değişkenini tanımlayın
 binance = None  # Başlangıçta None olarak tanımlanır
@@ -25,8 +25,8 @@ sell_lock = threading.Lock()
 
 
 # Telegram Bot API token ve chat ID'nizi girin
-telegram_api_token = '7973248041:AAHdoeptBjInabdEkYqXT4FG0DQ9H9TTFf8'
-chat_id = '1086082735'
+telegram_api_token = 
+chat_id = 
 app = ApplicationBuilder().token(telegram_api_token).build()
 
 # Telegram Bot nesnesini oluşturun
@@ -208,7 +208,7 @@ def get_volume_threshold(daily_volume):
     """
     Hacim eşiklerini kontrol eder ve belirlenen hacim seviyelerine göre bir eşik döndürür.
     """
-    volume_thresholds = [(10000000, 1000)]
+    volume_thresholds = [(10000000, 125000)]
     for threshold, minute_volume in volume_thresholds:
         if daily_volume < threshold:
             return minute_volume
@@ -615,7 +615,7 @@ def monitor_sell_conditions():
             for coin, info in list(unsold_coins.items()):
                 if coin not in sold_coins and coin in unsold_coins:
                     stop_loss_price = info['buy_price'] * 0.90  # %5 zarar stop-loss
-                    take_profit_price = info['buy_price'] * 1.01  # %5 kar take-profit
+                    take_profit_price = info['buy_price'] * 1.025  # %5 kar take-profit
                     #sell_result = manage_sell(coin, info['amount'], stop_loss_price, take_profit_price)
                     manage_sell(coin, info['amount'], stop_loss_price, take_profit_price)
 
