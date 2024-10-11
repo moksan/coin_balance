@@ -1,0 +1,34 @@
+{
+    "CKB/USDT": {
+        "amount": 638.0,
+        "buy_price": 0.015626,
+        "buy_time": "2024-10-11T18:01:04.744137+00:00",
+        "stop_loss_price": 0.01531348,
+        "take_profit_order_id": "1126855152",
+        "take_profit_price": 0.015782260000000003
+    },
+    "IOTA/USDT": {
+        "amount": 81.0,
+        "buy_price": 0.1205,
+        "buy_time": "2024-10-11T14:39:28.988251+00:00",
+        "stop_loss_price": 0.11809,
+        "take_profit_order_id": "1156187860",
+        "take_profit_price": 0.121705
+    },
+    "NULS/USDT": {
+        "amount": 29.0,
+        "buy_price": 0.3254,
+        "buy_time": "2024-10-11T14:39:35.065700+00:00",
+        "stop_loss_price": 0.318892,
+        "take_profit_order_id": "481033796",
+        "take_profit_price": 0.328654
+    },
+    "ZIL/USDT": {
+        "amount": 693.2,
+        "buy_price": 0.01441,
+        "buy_time": "2024-10-11T16:00:16.455344+00:00",
+        "stop_loss_price": 0.014121799999999999,
+        "take_profit_order_id": "1539079386",
+        "take_profit_price": 0.014554099999999999
+    }
+}
