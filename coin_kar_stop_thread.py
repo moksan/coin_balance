@@ -424,9 +424,9 @@ def handle_order_filled(order_id, coin, order_type):
         # unsold_coins ve bought_coins listesinden çıkar
         if coin in unsold_coins:
             del unsold_coins[coin]
-        if coin in bought_coins:
-            del bought_coins[coin]
-            save_bought_coins(bought_coins)
+        #if coin in bought_coins:
+            #del bought_coins[coin]
+            #save_bought_coins(bought_coins)
     except Exception as e:
         print_with_timestamp(f"{coin} için handle_order_filled fonksiyonunda hata: {e}")
 
