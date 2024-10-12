@@ -8,8 +8,8 @@ from telegram import Bot
 import requests
 
 # Binance API anahtarları
-api_key = '6B9AhNkKNJGBYBTSikwm8twyZkdRdFzFHrIZNZLFviTI2Qh4NnnF9yKmy7clOp4q'
-secret_key = 'SSLMSfk5JwO9CHKADLcUZLRxutxkp0cGZZmqRWm097AASsdWo7Y4sM4WHdo705Yb'
+api_key = ''
+secret_key = ''
 
 # Global değişkenler
 binance = None  # Başlangıçta None olarak tanımlanır
@@ -22,8 +22,8 @@ buy_lock = threading.Lock()
 sell_lock = threading.Lock()
 
 # Telegram Bot API token ve chat ID
-telegram_api_token = '7973248041:AAHdoeptBjInabdEkYqXT4FG0DQ9H9TTFf8'
-chat_id = '1086082735'
+telegram_api_token = ''
+chat_id = ''
 
 
 # Telegram Bot nesnesi
@@ -179,7 +179,7 @@ def get_volume_threshold(daily_volume):
     """
     Hacim eşiklerini kontrol eder ve önceden tanımlanmış hacim seviyelerine göre bir eşik döndürür.
     """
-    volume_thresholds = [(10000000, 1000)]
+    volume_thresholds = [(10000000, 115000)]
     for threshold, minute_volume in volume_thresholds:
         if daily_volume < threshold:
             return minute_volume
@@ -326,8 +326,8 @@ def monitor_buy_conditions(threshold_percentage=1.0):
                                     usdt_balance = new_balance
                                     
                                     # Alımdan sonra take-profit emri oluştur
-                                    take_profit_price = open_price * 1.01  # %1 kar hedefi
-                                    stop_loss_price = open_price * 0.98    # %1 zarar durdurma
+                                    take_profit_price = open_price * 1.025  # %2.5 kar hedefi
+                                    stop_loss_price = open_price * 0.95    # %5 zarar durdurma
                                     
                                     # Satış işlemini yönet
                                     manage_sell(coin, amount, stop_loss_price, take_profit_price)
